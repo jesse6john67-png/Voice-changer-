@@ -9,6 +9,9 @@ interface MessageDao {
     @Query("SELECT * FROM chat_messages ORDER BY timestamp ASC")
     fun getAllMessages(): Flow<List<ChatMessage>>
 
+    @Query("SELECT COUNT(*) FROM chat_messages")
+    suspend fun getMessagesCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: ChatMessage)
 

@@ -23,9 +23,11 @@ class EditorRepository(
 
     suspend fun savePreset(preset: AudioPreset) = presetDao.insertPreset(preset)
     suspend fun deletePreset(preset: AudioPreset) = presetDao.deletePreset(preset)
+    suspend fun getPresetsCount(): Int = presetDao.getPresetsCount()
 
     suspend fun addChatMessage(message: ChatMessage) = messageDao.insertMessage(message)
     suspend fun clearChatHistory() = messageDao.clearHistory()
+    suspend fun getMessagesCount(): Int = messageDao.getMessagesCount()
 
     /**
      * Sends a request to Gemini API to analyze the audio mixing setup and user request,

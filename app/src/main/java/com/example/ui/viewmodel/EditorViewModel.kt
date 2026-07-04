@@ -142,8 +142,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
         // Setup initial default custom presets if they don't exist
         viewModelScope.launch(Dispatchers.IO) {
             // Prepopulate database with a couple of nice system presets
-            delay(1000)
-            if (savedPresets.value.isEmpty()) {
+            delay(100)
+            if (repository.getPresetsCount() == 0) {
                 repository.savePreset(
                     AudioPreset(
                         name = "🎙️ Podcast Voice Pro",
@@ -176,7 +176,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 )
             }
             // Prepopulate initial assistant greeting if chat is empty
-            if (chatMessages.value.isEmpty()) {
+            if (repository.getMessagesCount() == 0) {
                 repository.addChatMessage(
                     ChatMessage(
                         sender = "assistant",

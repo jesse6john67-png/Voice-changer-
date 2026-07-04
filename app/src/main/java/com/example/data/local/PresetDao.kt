@@ -9,6 +9,9 @@ interface PresetDao {
     @Query("SELECT * FROM audio_presets ORDER BY name ASC")
     fun getAllPresets(): Flow<List<AudioPreset>>
 
+    @Query("SELECT COUNT(*) FROM audio_presets")
+    suspend fun getPresetsCount(): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPreset(preset: AudioPreset)
 
