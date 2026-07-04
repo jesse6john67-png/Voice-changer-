@@ -1,0 +1,6 @@
+{
+  "name": "AI Voice Editor",
+  "description": "An advanced voice tuner and sound mixer for content creators, featuring pitch tuning, background music mixing, noise reduction, and an AI mixing assistant.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
