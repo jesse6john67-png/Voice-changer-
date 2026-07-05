@@ -80,6 +80,8 @@ fun EditorScreen(
     val playbackProgress by viewModel.playbackProgress.collectAsStateWithLifecycle()
 
     val isRecordingMic by viewModel.isRecordingMic.collectAsStateWithLifecycle()
+    val recordingDuration by viewModel.recordingDuration.collectAsStateWithLifecycle()
+    val recordingAmplitudes by viewModel.recordingAmplitudes.collectAsStateWithLifecycle()
     val isMimicking by viewModel.isMimicking.collectAsStateWithLifecycle()
 
     // Sliders
@@ -249,6 +251,8 @@ fun EditorScreen(
                         samples = voiceSamples,
                         selectedSample = selectedSample,
                         isRecordingMic = isRecordingMic,
+                        recordingDuration = recordingDuration,
+                        recordingAmplitudes = recordingAmplitudes,
                         onSelected = { viewModel.selectVoiceSample(it) },
                         onRecordToggle = {
                             if (isRecordingMic) {
@@ -426,11 +430,86 @@ fun EditorScreen(
 }
 
 // --- SUBCOMPONENT 1: RAW VOICE SAMPLE PICKER ---
+fun formatDurationMs(ms: Long): String {
+    val totalSec = ms / 1000L
+    val min = totalSec / 60L
+    val sec = totalSec % 60L
+    val tenths = (ms % 1000L) / 100L
+    return "${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}.$tenths"
+}
+
+@Composable
+fun LiveRecordingVisualizer(
+    amplitudes: List<Float>,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val width = size.width
+        val height = size.height
+        val barWidth = 6.dp.toPx()
+        val gap = 4.dp.toPx()
+        val totalBarWidth = barWidth + gap
+        val maxBars = (width / totalBarWidth).toInt()
+        
+        // Take only the last maxBars from amplitudes
+        val visibleAmps = if (amplitudes.size > maxBars) {
+            amplitudes.takeLast(maxBars)
+        } else {
+            amplitudes
+        }
+        
+        // Center the wave vertically
+        val centerY = height / 2f
+        
+        // Draw empty baseline guides if there are no amplitudes
+        if (visibleAmps.isEmpty()) {
+            val numDummyBars = (width / totalBarWidth).toInt()
+            for (i in 0 until numDummyBars) {
+                val x = i * totalBarWidth
+                val barHeight = 4.dp.toPx()
+                drawRoundRect(
+                    color = Color.White.copy(alpha = 0.15f),
+                    topLeft = Offset(x, centerY - barHeight / 2f),
+                    size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
+                )
+            }
+        } else {
+            // Draw active bars from left to right as a scrolling wave
+            val startOffset = width - (visibleAmps.size * totalBarWidth)
+            visibleAmps.forEachIndexed { index, amp ->
+                val x = startOffset + index * totalBarWidth
+                // Calculate height, minimum 4.dp to keep it visible as a line
+                val minHeight = 4.dp.toPx()
+                val maxHeight = height - 16.dp.toPx()
+                val barHeight = (amp * maxHeight).coerceAtLeast(minHeight)
+                
+                // Beautiful gradient for recording: coral to purple
+                val brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFFF5252), // Bright red/coral
+                        Color(0xFFE040FB)  // Purple/magenta
+                    )
+                )
+                
+                drawRoundRect(
+                    brush = brush,
+                    topLeft = Offset(x, centerY - barHeight / 2f),
+                    size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f)
+                )
+            }
+        }
+    }
+}
+
 @Composable
 fun VoiceTrackPicker(
     samples: List<VoiceSample>,
     selectedSample: VoiceSample,
     isRecordingMic: Boolean,
+    recordingDuration: Long,
+    recordingAmplitudes: List<Float>,
     onSelected: (VoiceSample) -> Unit,
     onRecordToggle: () -> Unit,
     onImportClick: () -> Unit
@@ -442,12 +521,149 @@ fun VoiceTrackPicker(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = "Currently Editing Vocal Clip:",
-                color = AccentCyan,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold
-            )
+            if (isRecordingMic) {
+                // RENDER GORGEOUS STUDIO RECORDING PANEL
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(Color(0xFF130526), Color(0xFF090214))
+                            )
+                        )
+                        .border(1.dp, Color(0xFFFF5252).copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                        .padding(16.dp)
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        // Header row with flashing red indicator
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Flashing Dot Animation
+                                val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                                val alpha by infiniteTransition.animateFloat(
+                                    initialValue = 0.3f,
+                                    targetValue = 1.0f,
+                                    animationSpec = infiniteRepeatable(
+                                        animation = tween(600, easing = LinearEasing),
+                                        repeatMode = RepeatMode.Reverse
+                                    ),
+                                    label = "alpha"
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(10.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFFF5252).copy(alpha = alpha))
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "LIVE STUDIO CAPTURE",
+                                    color = Color(0xFFFF5252),
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                            
+                            Surface(
+                                color = Color.White.copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Text(
+                                    text = "AAC / 44.1 kHz",
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Live Digital Counter
+                        Text(
+                            text = formatDurationMs(recordingDuration),
+                            color = Color.White,
+                            fontSize = 32.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.sp
+                        )
+                        
+                        Text(
+                            text = "ELAPSED TIME",
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 0.5.sp
+                        )
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Dynamic Waveform Visualizer
+                        LiveRecordingVisualizer(
+                            amplitudes = recordingAmplitudes,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(60.dp)
+                                .background(Color.Black.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp)
+                        )
+                        
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        // Controls Row
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // Stop & Save Button
+                            Button(
+                                onClick = onRecordToggle,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = Color(0xFFFF5252),
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(24.dp),
+                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth(0.9f)
+                                    .height(48.dp)
+                                    .testTag("stop_recording_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Stop,
+                                    contentDescription = "Stop Recording",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "STOP & LOAD RAW INPUT",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.5.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Text(
+                    text = "Currently Editing Vocal Clip:",
+                    color = AccentCyan,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = selectedSample.name,
@@ -558,6 +774,7 @@ fun VoiceTrackPicker(
                         )
                     }
                 }
+            }
             }
         }
     }

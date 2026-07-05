@@ -15,50 +15,50 @@ import java.util.concurrent.TimeUnit
 
 @JsonClass(generateAdapter = true)
 data class Part(
-    @Json(name = "text") val text: String
+    @field:Json(name = "text") val text: String
 )
 
 @JsonClass(generateAdapter = true)
 data class Content(
-    @Json(name = "parts") val parts: List<Part>
+    @field:Json(name = "parts") val parts: List<Part>
 )
 
 @JsonClass(generateAdapter = true)
 data class GenerationConfig(
-    @Json(name = "temperature") val temperature: Float? = null,
-    @Json(name = "responseMimeType") val responseMimeType: String? = null
+    @field:Json(name = "temperature") val temperature: Float? = null,
+    @field:Json(name = "responseMimeType") val responseMimeType: String? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class GenerateContentRequest(
-    @Json(name = "contents") val contents: List<Content>,
-    @Json(name = "generationConfig") val generationConfig: GenerationConfig? = null,
-    @Json(name = "systemInstruction") val systemInstruction: Content? = null
+    @field:Json(name = "contents") val contents: List<Content>,
+    @field:Json(name = "generationConfig") val generationConfig: GenerationConfig? = null,
+    @field:Json(name = "systemInstruction") val systemInstruction: Content? = null
 )
 
 @JsonClass(generateAdapter = true)
 data class Candidate(
-    @Json(name = "content") val content: Content?
+    @field:Json(name = "content") val content: Content?
 )
 
 @JsonClass(generateAdapter = true)
 data class GenerateContentResponse(
-    @Json(name = "candidates") val candidates: List<Candidate>?
+    @field:Json(name = "candidates") val candidates: List<Candidate>?
 )
 
 // The structure we want our AI to return for automated tuning
 @JsonClass(generateAdapter = true)
 data class SoundOptimizationSuggestion(
-    @Json(name = "explanation") val explanation: String,
-    @Json(name = "pitchShift") val pitchShift: Float,
-    @Json(name = "speed") val speed: Float,
-    @Json(name = "voiceVolume") val voiceVolume: Float,
-    @Json(name = "noiseReductionEnabled") val noiseReductionEnabled: Boolean,
-    @Json(name = "noiseReductionLevel") val noiseReductionLevel: Float,
-    @Json(name = "selectedBgmTrack") val selectedBgmTrack: String,
-    @Json(name = "bgmVolume") val bgmVolume: Float,
-    @Json(name = "equalizerBass") val equalizerBass: Float,
-    @Json(name = "equalizerTreble") val equalizerTreble: Float
+    @field:Json(name = "explanation") val explanation: String,
+    @field:Json(name = "pitchShift") val pitchShift: Float,
+    @field:Json(name = "speed") val speed: Float,
+    @field:Json(name = "voiceVolume") val voiceVolume: Float,
+    @field:Json(name = "noiseReductionEnabled") val noiseReductionEnabled: Boolean,
+    @field:Json(name = "noiseReductionLevel") val noiseReductionLevel: Float,
+    @field:Json(name = "selectedBgmTrack") val selectedBgmTrack: String,
+    @field:Json(name = "bgmVolume") val bgmVolume: Float,
+    @field:Json(name = "equalizerBass") val equalizerBass: Float,
+    @field:Json(name = "equalizerTreble") val equalizerTreble: Float
 )
 
 interface GeminiApiService {

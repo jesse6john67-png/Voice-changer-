@@ -2,6 +2,10 @@ package com.example.ui.viewmodel
 
 import android.app.Application
 import android.content.ContentValues
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioManager
+import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.net.Uri
 import android.os.Build
@@ -81,8 +85,16 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private val _isRecordingMic = MutableStateFlow(false)
     val isRecordingMic = _isRecordingMic.asStateFlow()
 
+    private val _recordingDuration = MutableStateFlow(0L)
+    val recordingDuration = _recordingDuration.asStateFlow()
+
+    private val _recordingAmplitudes = MutableStateFlow<List<Float>>(emptyList())
+    val recordingAmplitudes = _recordingAmplitudes.asStateFlow()
+
     private var mediaRecorder: MediaRecorder? = null
     private var activeRecordFile: File? = null
+    private var audioTrack: AudioTrack? = null
+    private var recordingJob: Job? = null
 
     // --- Voice Mimic States ---
     private val _isMimicking = MutableStateFlow(false)
@@ -214,7 +226,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     fun dismissError() { _errorMessage.value = null }
     fun dismissSuccess() { _successMessage.value = null }
 
-    // --- Playback Loop Simulation ---
+    // --- Playback Loop Simulation with Real-time Audio Synthesis ---
     fun togglePlayback() {
         if (_isPlaying.value) {
             stopPlayback()
@@ -226,27 +238,247 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     private fun startPlayback() {
         _isPlaying.value = true
         playbackJob?.cancel()
-        playbackJob = viewModelScope.launch {
+        playbackJob = viewModelScope.launch(Dispatchers.Default) {
+            var sampleRate = 44100
+            
+            fun initTrack(rate: Int, size: Int): AudioTrack? {
+                return try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        AudioTrack.Builder()
+                            .setAudioAttributes(
+                                AudioAttributes.Builder()
+                                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                                    .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                                    .build()
+                            )
+                            .setAudioFormat(
+                                AudioFormat.Builder()
+                                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                                    .setSampleRate(rate)
+                                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                                    .build()
+                            )
+                            .setBufferSizeInBytes(size)
+                            .setTransferMode(AudioTrack.MODE_STREAM)
+                            .build()
+                    } else {
+                        @Suppress("DEPRECATION")
+                        AudioTrack(
+                            AudioManager.STREAM_MUSIC,
+                            rate,
+                            AudioFormat.CHANNEL_OUT_MONO,
+                            AudioFormat.ENCODING_PCM_16BIT,
+                            size,
+                            AudioTrack.MODE_STREAM
+                        )
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    null
+                }
+            }
+
+            var bufferSize = AudioTrack.getMinBufferSize(
+                sampleRate,
+                AudioFormat.CHANNEL_OUT_MONO,
+                AudioFormat.ENCODING_PCM_16BIT
+            ).coerceAtLeast(1024)
+
+            var track = initTrack(sampleRate, bufferSize)
+
+            if (track == null || track.state != AudioTrack.STATE_INITIALIZED) {
+                try { track?.release() } catch (e: Exception) {}
+                sampleRate = 22050
+                bufferSize = AudioTrack.getMinBufferSize(
+                    sampleRate,
+                    AudioFormat.CHANNEL_OUT_MONO,
+                    AudioFormat.ENCODING_PCM_16BIT
+                ).coerceAtLeast(1024)
+                track = initTrack(sampleRate, bufferSize)
+            }
+
+            audioTrack = track
+            if (track == null || track.state != AudioTrack.STATE_INITIALIZED) {
+                try { track?.release() } catch (e: Exception) {}
+                audioTrack = null
+                _isPlaying.value = true
+                withContext(Dispatchers.Main) {
+                    _errorMessage.value = "Audio output not initialized. Running in visual simulation mode."
+                }
+                val sampleDuration = _selectedSample.value.durationSec
+                val stepMs = 100L
+                var currentProgress = _playbackProgress.value
+                while (_isPlaying.value) {
+                    val currentSpeed = _speedMultiplier.value.coerceIn(0.5f, 2.0f)
+                    currentProgress += (stepMs.toFloat() / 1000f) * currentSpeed / sampleDuration
+                    if (currentProgress >= 1.0f) {
+                        currentProgress = 0f
+                    }
+                    _playbackProgress.value = currentProgress
+                    delay(stepMs)
+                }
+                return@launch
+            }
+
+            try {
+                track.play()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+
             val sampleDuration = _selectedSample.value.durationSec
-            val adjustedDuration = sampleDuration / _speedMultiplier.value // Duration shrinks if speed is high
-            val stepMs = 100L
-            val totalSteps = (adjustedDuration * 1000) / stepMs
-            var currentStep = (_playbackProgress.value * totalSteps).toInt()
+            
+            var sampleTimeSec = 0.0
+            val buffer = ShortArray(1024)
+            var phaseVoice = 0.0
+            var phaseBgm = 0.0
+            var phaseBgmMelody = 0.0
+            var phaseLfo = 0.0
+            var bgmNoteTimer = 0.0
+
+            val rand = java.util.Random()
 
             while (_isPlaying.value) {
-                currentStep++
-                if (currentStep > totalSteps) {
-                    currentStep = 0 // loop playback
+                val currentSpeed = _speedMultiplier.value.coerceIn(0.5f, 2.0f)
+                val currentPitch = _pitchShift.value.coerceIn(-6f, 6f)
+                val currentVoiceVol = _voiceVolume.value.coerceIn(0f, 2.0f)
+                val currentBgm = _selectedBgmTrack.value
+                val currentBgmVol = _bgmVolume.value.coerceIn(0f, 1.0f)
+                val noiseEnabled = _noiseReductionEnabled.value
+                val noiseLevelSetting = _noiseReductionLevel.value.coerceIn(0f, 100f)
+                val currentBass = _equalizerBass.value.coerceIn(-10f, 10f)
+                val currentTreble = _equalizerTreble.value.coerceIn(-10f, 10f)
+
+                val bassGain = Math.pow(10.0, currentBass.toDouble() / 20.0)
+                val trebleGain = Math.pow(10.0, currentTreble.toDouble() / 20.0)
+
+                val baseVoiceFreq = when (_selectedSample.value.id) {
+                    "sample_vlog" -> 140.0
+                    "sample_podcast" -> 110.0
+                    "sample_shorts" -> 180.0
+                    "sample_interview" -> 150.0
+                    else -> 130.0
+                } * Math.pow(2.0, currentPitch.toDouble() / 12.0)
+
+                val baseNoise = _selectedSample.value.baseNoiseLevel
+
+                for (i in buffer.indices) {
+                    val t = sampleTimeSec + (i.toDouble() / sampleRate)
+
+                    val cadenceSpeed = 1.5 * currentSpeed
+                    val cadenceEnv = 0.5 + 0.5 * Math.sin(2.0 * Math.PI * cadenceSpeed * t)
+                    
+                    val vibrato = 1.0 + 0.03 * Math.sin(2.0 * Math.PI * 5.0 * t)
+                    val voiceFreq = baseVoiceFreq * vibrato
+                    
+                    val voiceSampleRaw = (
+                        Math.sin(phaseVoice) + 
+                        0.5 * Math.sin(phaseVoice * 2.0) + 
+                        0.2 * Math.sin(phaseVoice * 3.0)
+                    ) / 1.7
+                    phaseVoice += 2.0 * Math.PI * voiceFreq / sampleRate
+                    if (phaseVoice > 2.0 * Math.PI) phaseVoice -= 2.0 * Math.PI
+
+                    var voiceSample = voiceSampleRaw * cadenceEnv * currentVoiceVol * 15000.0
+                    voiceSample *= bassGain
+
+                    var bgmSample = 0.0
+                    when (currentBgm) {
+                        "lofi" -> {
+                            val lfo = 0.6 + 0.4 * Math.sin(phaseLfo)
+                            val wave = (
+                                Math.sin(phaseBgm) + 
+                                0.6 * Math.sin(phaseBgm * 1.18) + 
+                                0.5 * Math.sin(phaseBgm * 1.5) + 
+                                0.4 * Math.sin(phaseBgm * 1.78)
+                            ) / 2.5
+                            bgmSample = wave * lfo * 10000.0 * bassGain
+                            
+                            phaseBgm += 2.0 * Math.PI * 110.0 / sampleRate
+                            phaseLfo += 2.0 * Math.PI * 0.2 * currentSpeed / sampleRate
+                        }
+                        "epic" -> {
+                            val wave = (Math.sin(phaseBgm) + 0.8 * Math.sin(phaseBgm * 1.5)) / 1.8
+                            bgmSample = wave * 12000.0 * bassGain
+                            phaseBgm += 2.0 * Math.PI * 82.0 / sampleRate
+                        }
+                        "upbeat" -> {
+                            bgmNoteTimer += 1.0 / sampleRate
+                            val noteRate = 0.25 / currentSpeed
+                            val notes = doubleArrayOf(261.63, 329.63, 392.00, 523.25)
+                            val noteIdx = ((bgmNoteTimer / noteRate).toInt()) % notes.size
+                            val currentNoteFreq = notes[noteIdx]
+
+                            val wave = Math.sin(phaseBgmMelody)
+                            bgmSample = wave * 8000.0 * trebleGain
+                            
+                            phaseBgmMelody += 2.0 * Math.PI * currentNoteFreq / sampleRate
+                            if (phaseBgmMelody > 2.0 * Math.PI) phaseBgmMelody -= 2.0 * Math.PI
+                        }
+                        "acoustic" -> {
+                            bgmNoteTimer += 1.0 / sampleRate
+                            val noteRate = 0.4 / currentSpeed
+                            val notes = doubleArrayOf(196.00, 246.94, 293.66, 392.00)
+                            val noteIdx = ((bgmNoteTimer / noteRate).toInt()) % notes.size
+                            val currentNoteFreq = notes[noteIdx]
+
+                            val pluckTime = bgmNoteTimer % noteRate
+                            val pluckEnv = Math.exp(-4.0 * pluckTime)
+
+                            val wave = Math.sin(phaseBgmMelody)
+                            bgmSample = wave * pluckEnv * 12000.0 * trebleGain
+                            
+                            phaseBgmMelody += 2.0 * Math.PI * currentNoteFreq / sampleRate
+                            if (phaseBgmMelody > 2.0 * Math.PI) phaseBgmMelody -= 2.0 * Math.PI
+                        }
+                    }
+                    if (phaseBgm > 2.0 * Math.PI) phaseBgm -= 2.0 * Math.PI
+                    if (phaseLfo > 2.0 * Math.PI) phaseLfo -= 2.0 * Math.PI
+
+                    bgmSample *= currentBgmVol
+
+                    var noiseSample = (rand.nextFloat() * 2.0 - 1.0) * (baseNoise / 100.0) * 8000.0
+                    if (noiseEnabled) {
+                        noiseSample *= (1.0 - (noiseLevelSetting / 100.0))
+                    }
+                    noiseSample *= trebleGain
+
+                    val mixedSample = (voiceSample + bgmSample + noiseSample).toInt().coerceIn(-32767, 32767)
+                    buffer[i] = mixedSample.toShort()
                 }
-                _playbackProgress.value = currentStep.toFloat() / totalSteps
-                delay(stepMs)
+
+                track?.write(buffer, 0, buffer.size)
+
+                sampleTimeSec += (buffer.size.toDouble() / sampleRate) * currentSpeed
+                val durationProgress = (sampleTimeSec / sampleDuration)
+                if (durationProgress >= 1.0) {
+                    sampleTimeSec = 0.0
+                    _playbackProgress.value = 0f
+                } else {
+                    _playbackProgress.value = durationProgress.toFloat()
+                }
             }
+
+            try {
+                track?.stop()
+                track?.release()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+            audioTrack = null
         }
     }
 
     private fun stopPlayback() {
         _isPlaying.value = false
         playbackJob?.cancel()
+        try {
+            audioTrack?.stop()
+            audioTrack?.release()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        audioTrack = null
     }
 
     // --- Preset Persistence ---
@@ -410,6 +642,35 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     // --- Microphone Recording Controls ---
+    private fun startRecordingTracker() {
+        recordingJob?.cancel()
+        val startTime = System.currentTimeMillis()
+        recordingJob = viewModelScope.launch(Dispatchers.Default) {
+            while (_isRecordingMic.value) {
+                val elapsed = System.currentTimeMillis() - startTime
+                _recordingDuration.value = elapsed
+                
+                // Fetch amplitude
+                val amp = try {
+                    mediaRecorder?.maxAmplitude?.toFloat() ?: 0f
+                } catch (e: Exception) {
+                    0f
+                }
+                // Normalize amplitude (0.01f to 1.0f)
+                val normalized = (amp / 32767f).coerceIn(0.01f, 1.0f)
+                
+                val currentList = _recordingAmplitudes.value.toMutableList()
+                currentList.add(normalized)
+                if (currentList.size > 50) {
+                    currentList.removeAt(0)
+                }
+                _recordingAmplitudes.value = currentList
+                
+                delay(100) // Poll 10 times per second for smooth visualizer and timer
+            }
+        }
+    }
+
     fun startMicRecording() {
         if (_isRecordingMic.value) return
         viewModelScope.launch(Dispatchers.IO) {
@@ -420,7 +681,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 activeRecordFile = recordFile
 
                 val recorder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    MediaRecorder(getApplication())
+                    val recorderContext = getApplication<Application>().createAttributionContext("microphone")
+                    MediaRecorder(recorderContext)
                 } else {
                     @Suppress("DEPRECATION")
                     MediaRecorder()
@@ -436,6 +698,9 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
                 }
                 mediaRecorder = recorder
                 _isRecordingMic.value = true
+                _recordingDuration.value = 0L
+                _recordingAmplitudes.value = emptyList()
+                startRecordingTracker()
                 withContext(Dispatchers.Main) {
                     _successMessage.value = "🎤 Microphone recording started..."
                 }
@@ -450,6 +715,8 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
     fun stopMicRecording() {
         if (!_isRecordingMic.value) return
+        recordingJob?.cancel()
+        recordingJob = null
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 mediaRecorder?.apply {
@@ -461,7 +728,7 @@ class EditorViewModel(application: Application) : AndroidViewModel(application) 
 
                 val file = activeRecordFile
                 if (file != null && file.exists() && file.length() > 0) {
-                    val durationSec = 10 // default estimated length
+                    val durationSec = (_recordingDuration.value / 1000L).coerceAtLeast(1L).toInt()
                     val newSample = VoiceSample(
                         id = "mic_record_${System.currentTimeMillis()}",
                         name = "🎤 Mic Rec - ${file.name.substringAfter("mic_record_").substringBefore(".m4a")}",

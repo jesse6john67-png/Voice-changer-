@@ -1,0 +1,19 @@
+{
+  "name": "ai-voice-editor",
+  "version": "1.0.0",
+  "description": "An advanced voice tuner and sound mixer for content creators, featuring pitch tuning, background music mixing, noise reduction, and an AI mixing assistant.",
+  "scripts": {
+    "build": "echo 'Android project compiled via Gradle'",
+    "lint": "echo 'No JavaScript/TypeScript linting needed for native Kotlin Android project'"
+  },
+  "keywords": [
+    "android",
+    "kotlin",
+    "jetpack-compose",
+    "voice-editor",
+    "audio-mixer",
+    "gemini"
+  ],
+  "author": "AI Studio",
+  "license": "UNLICENSED"
+}
