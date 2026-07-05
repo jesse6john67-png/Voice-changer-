@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Studio Voice Tuner & Mixer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&family=JetBrains+Mono:wght@400;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #0b0616;
+            --card-bg: #120924;
+            --primary: #9d4edd;
+            --accent-cyan: #00f5ff;
+            --accent-pink: #ff5252;
+            --text-main: #f3f0f7;
+            --text-muted: #a39cb4;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow-x: hidden;
+            padding: 2rem 1rem;
+        }
+
+        .ambient-glow {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(157, 78, 221, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
+            top: -100px;
+            left: -100px;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .ambient-glow-bottom {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(0, 245, 255, 0.1) 0%, rgba(0, 0, 0, 0) 70%);
+            bottom: -100px;
+            right: -100px;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+            z-index: 1;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            padding: 3rem 2rem;
+            text-align: center;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(10px);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary), var(--accent-cyan), var(--accent-pink));
+        }
+
+        .badge {
+            display: inline-block;
+            background: rgba(157, 78, 221, 0.15);
+            color: #d8b4fe;
+            border: 1px solid rgba(157, 78, 221, 0.3);
+            padding: 0.35rem 1rem;
+            border-radius: 9999px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        h1 {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 2.75rem;
+            font-weight: 700;
+            line-height: 1.2;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #ffffff 30%, #e8dbff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        p.subtitle {
+            font-size: 1.15rem;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto 2.5rem auto;
+            line-height: 1.6;
+        }
+
+        /* Waveform Graphic */
+        .wave-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            height: 80px;
+            margin-bottom: 2.5rem;
+        }
+
+        .wave-bar {
+            width: 6px;
+            background: linear-gradient(180deg, var(--primary), var(--accent-cyan));
+            border-radius: 3px;
+            animation: pulse 1.5s ease-in-out infinite alternate;
+        }
+
+        .wave-bar:nth-child(2n) {
+            background: linear-gradient(180deg, var(--accent-cyan), var(--accent-pink));
+            animation-delay: 0.2s;
+        }
+
+        .wave-bar:nth-child(3n) {
+            background: linear-gradient(180deg, var(--accent-pink), var(--primary));
+            animation-delay: 0.4s;
+        }
+
+        @keyframes pulse {
+            0% { height: 15px; }
+            100% { height: 75px; }
+        }
+
+        /* Features List */
+        .features-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.25rem;
+            margin-bottom: 3rem;
+            text-align: left;
+        }
+
+        @media (max-width: 600px) {
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+            h1 {
+                font-size: 2rem;
+            }
+        }
+
+        .feature-item {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 1.25rem;
+            border-radius: 16px;
+            transition: all 0.2s ease;
+        }
+
+        .feature-item:hover {
+            background: rgba(255, 255, 255, 0.05);
+            border-color: rgba(157, 78, 221, 0.3);
+            transform: translateY(-2px);
+        }
+
+        .feature-icon {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-title {
+            font-weight: 600;
+            font-size: 1rem;
+            color: #ffffff;
+            margin-bottom: 0.25rem;
+        }
+
+        .feature-desc {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            line-height: 1.4;
+        }
+
+        /* Download Button */
+        .download-action {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            background: linear-gradient(135deg, var(--primary) 0%, #7b2cbf 100%);
+            color: #ffffff;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 1.1rem;
+            padding: 1rem 2.5rem;
+            border-radius: 50px;
+            box-shadow: 0 8px 24px rgba(157, 78, 221, 0.4);
+            transition: all 0.3s ease;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 30px rgba(157, 78, 221, 0.6), 0 0 15px rgba(0, 245, 255, 0.3);
+            background: linear-gradient(135deg, #ae63f2 0%, #8c3ed6 100%);
+        }
+
+        .btn:active {
+            transform: translateY(-1px);
+        }
+
+        .btn-icon {
+            font-size: 1.35rem;
+        }
+
+        .file-info {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        footer {
+            margin-top: 3rem;
+            text-align: center;
+            font-size: 0.85rem;
+            color: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="ambient-glow"></div>
+    <div class="ambient-glow-bottom"></div>
+
+    <div class="container">
+        <div class="card">
+            <span class="badge">Google AI Studio • Native Android App</span>
+            <h1>AI Voice Editor & Mixer</h1>
+            <p class="subtitle">An advanced vocal tuner, sound effects desk, and background music mixer powered by dynamic audio processing and built-in studio tracking controls.</p>
+
+            <!-- Animated audio waves -->
+            <div class="wave-container">
+                <div class="wave-bar" style="height: 40px; animation-delay: 0.1s;"></div>
+                <div class="wave-bar" style="height: 60px; animation-delay: 0.3s;"></div>
+                <div class="wave-bar" style="height: 25px; animation-delay: 0.5s;"></div>
+                <div class="wave-bar" style="height: 75px; animation-delay: 0.2s;"></div>
+                <div class="wave-bar" style="height: 50px; animation-delay: 0.4s;"></div>
+                <div class="wave-bar" style="height: 30px; animation-delay: 0.1s;"></div>
+                <div class="wave-bar" style="height: 65px; animation-delay: 0.6s;"></div>
+                <div class="wave-bar" style="height: 45px; animation-delay: 0.3s;"></div>
+                <div class="wave-bar" style="height: 20px; animation-delay: 0.5s;"></div>
+                <div class="wave-bar" style="height: 55px; animation-delay: 0.2s;"></div>
+            </div>
+
+            <!-- Features -->
+            <div class="features-grid">
+                <div class="feature-item">
+                    <div class="feature-icon">🎤</div>
+                    <div class="feature-title">Raw Studio Capture</div>
+                    <div class="feature-desc">Dynamic AAC recording with real-time waveform visualization, active level monitoring, and millisecond counter.</div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">🎛️</div>
+                    <div class="feature-title">Vocal Harmonization</div>
+                    <div class="feature-desc">Fine-tune pitch, control playback speed, adjust sample levels, and layer high-fidelity background tracks.</div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">✨</div>
+                    <div class="feature-title">Sound Optimization</div>
+                    <div class="feature-desc">Automatic studio tuning suggestions to elevate raw microphone input to release-ready audio clips.</div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">🪄</div>
+                    <div class="feature-title">Voice Mimic Studio</div>
+                    <div class="feature-desc">Train and synthesize matching voice profiles dynamically using state-of-the-art voice conversion pipelines.</div>
+                </div>
+            </div>
+
+            <!-- Action -->
+            <div class="download-action">
+                <a href="app-debug.apk" class="btn" download>
+                    <span class="btn-icon">📥</span>
+                    <span>Download Android APK</span>
+                </a>
+                <span class="file-info">Package: ai-voice-editor-v1.0.0.apk • Size: ~22 MB</span>
+            </div>
+        </div>
+
+        <footer>
+            Built and verified on the AI Studio Android Emulator container environment.
+        </footer>
+    </div>
+
+    <script>
+        // Smoothly randomize wave animation delays slightly for realism
+        const bars = document.querySelectorAll('.wave-bar');
+        bars.forEach(bar => {
+            const randomDelay = Math.random() * 0.8;
+            bar.style.animationDelay = `${randomDelay}s`;
+            const randomDuration = 1.0 + Math.random() * 1.0;
+            bar.style.animationDuration = `${randomDuration}s`;
+        });
+    </script>
+</body>
+</html>
